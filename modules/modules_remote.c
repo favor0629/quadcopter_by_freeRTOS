@@ -1,6 +1,7 @@
 #include "modules_remote.h"
 #include "nrf24l01.h"
 #include <string.h>
+#include "debug.h"
 
 
 #undef SUCCESS
@@ -230,10 +231,14 @@ void Remote_Task(void *argument)
     {
         Remote_Init();
     }
+    TickType_t last_wake = xTaskGetTickCount();
 
     for (;;)
     {
+        LOG_I("Remote Task running now -------\r\n");
         Remote_Update();
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(5));
+        //vTaskDelay(pdMS_TO_TICKS(5));
 
         /*
          * 如果你使用的 NRF24L01_WaitRxPacket 已经阻塞等待 IRQ，

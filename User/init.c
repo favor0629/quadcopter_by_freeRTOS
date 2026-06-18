@@ -59,7 +59,7 @@ void ALL_Init(void)
 
 	LED_Init();              //LED闪灯初始化
 
-	USART1_Config(9600);
+	USART1_Config(115200);
 	
 	IIC_Init();             //I2C初始化	
 //----------------------------------------	

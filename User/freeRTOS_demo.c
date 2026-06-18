@@ -20,7 +20,7 @@
 #define REMOTE_TASK_PRIO    2
 #define REMOTE_TASK_STACK 256
 #define FLIGHT_TASK_PRIO    3
-#define FLIGHT_TASK_STACK 256
+#define FLIGHT_TASK_STACK 1024
 
 static TaskHandle_t StartTask_Handler = NULL;
 static void StartTaskCreate(void *parameter);
@@ -55,11 +55,11 @@ void freeRTOS_demo(void)
 
     if(xReturn == pdPASS)
     {
-        LOG_I("start task create success!");
+        //LOG_I("start task create success!\r\n");
     }
     else
     {
-       LOG_I("start task create failed!");
+       //LOG_I("start task create failed!\r\n");
     }
 
     vTaskStartScheduler();
@@ -67,6 +67,7 @@ void freeRTOS_demo(void)
 
 static void StartTaskCreate(void* parameter)
 {
+	LOG_E("start StartTaskCreate function \r\n");
     BaseType_t xReturn = pdPASS;
     (void)parameter;
 
@@ -84,11 +85,11 @@ static void StartTaskCreate(void* parameter)
                          (TaskHandle_t*  )&RemoteTask_Handle);
     if(xReturn != pdPASS)
     {
-        while(1);
+         LOG_E("create RemoteTask failed\r\n");
     }
     else
     {
-        LOG_E("create RemoteTask successfully");
+        LOG_E("create RemoteTask successfully\r\n");
     }
 
     xReturn = xTaskCreate(
@@ -100,7 +101,11 @@ static void StartTaskCreate(void* parameter)
                          (TaskHandle_t*  )&FlightTask_Handle);
     if(xReturn != pdPASS)
     {
-        while(1);
+        LOG_E("create FlightTask failed\r\n");
+    }
+    else
+    {
+        LOG_E("create FlightTask successfully!\r\n");
     }
 
     vTaskDelete(NULL);
@@ -108,13 +113,15 @@ static void StartTaskCreate(void* parameter)
 
 static void RemoteTask(void *parameter)
 {
+    LOG_I("begin remote task\r\n ");
     (void)parameter;
     Remote_Task(NULL);
 }
 
 static void FlightTask(void *parameter)
 {
-    const TickType_t desired_period = pdMS_TO_TICKS(3);
+    LOG_I("begin flight task\r\n ");
+    const TickType_t desired_period = pdMS_TO_TICKS(10);
     const TickType_t control_period = (desired_period == 0U) ? 1U : desired_period;
     TickType_t last_wake = xTaskGetTickCount();
     const float dt = 0.003f;
@@ -133,7 +140,9 @@ static void FlightTask(void *parameter)
 
     for (;;)
     {
+        LOG_I("Flight Task running\r\n");
         vTaskDelayUntil(&last_wake, control_period);
+        //vTaskDelay(pdMS_TO_TICKS(5));
 
         if (MpuGetData() != MPU6050_OK || get_MPU6050_datas(&mpu) != MPU6050_OK)
         {

@@ -162,6 +162,11 @@ void Debug_VPrintf(const char *fmt, va_list args)
     {
         return;
     }
+    if(n >= (int)sizeof(buffer))
+    {
+        n = (int)sizeof(buffer) - 1;
+    }
+
     /* vsnprintf 可能截断，buffer 仍保证有 '\0' */
     Debug_SendString(buffer);
 #else   
