@@ -1,5 +1,6 @@
 
 #include "INIT.h"
+#include "debug.h"
 //#include "ALL_DEFINE.h"
 //#include "pid.h"
 
@@ -59,7 +60,7 @@ void ALL_Init(void)
 
 	LED_Init();              //LED闪灯初始化
 
-	USART1_Config(115200);
+	USART1_Config(9600);
 	
 	IIC_Init();             //I2C初始化	
 //----------------------------------------	
@@ -71,7 +72,14 @@ void ALL_Init(void)
 	Mpu_Init();              //MPU6050初始化
 
 
-	NRF24L01_Init();				//2.4G遥控通信初始化
+	if(NRF24L01_Init() != NRF24L01_OK)
+	{
+		LOG_E("NRF24L01 initialization failed\r\n");
+	}
+	else
+	{
+		LOG_I("NRF24L01 initialization succeeded\r\n");
+	}
 
 	//TIM2_PWM_Config();			//4路PWM初始化
 	//PWM_Init();						//4路PWM初始化

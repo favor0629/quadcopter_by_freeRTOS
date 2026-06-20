@@ -78,6 +78,7 @@ static uint8_t prv_write_reg(uint8_t regaddr, uint8_t data)
 {
     NRF24L01_CSN_LOW();
     (void)SPI_RW_Byte(SPI_WRITE_REG | (regaddr & 0x1FU));
+    //SPI_RW_Byte(regaddr);
     (void)SPI_RW_Byte(data);
     NRF24L01_CSN_HIGH();
     return NRF24L01_OK;
@@ -87,6 +88,7 @@ static uint8_t prv_read_reg(uint8_t regaddr, uint8_t *rx)
 {
     NRF24L01_CSN_LOW();
     (void)SPI_RW_Byte(SPI_READ_REG | (regaddr & 0x1FU));
+    //SPI_RW_Byte(regaddr);
     *rx = SPI_RW_Byte(NOP);
     NRF24L01_CSN_HIGH();
     return NRF24L01_OK;

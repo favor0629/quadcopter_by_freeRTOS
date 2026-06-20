@@ -70,6 +70,15 @@ static float s_yaw_target = 0.0f;
 /* 初始化标志 */
 static uint8_t s_inited = 0U;
 
+/* yaw 控制限幅，防止偏航通道输出过大导致电机剧烈反转 */
+#define FLIGHT_YAW_TARGET_LIMIT_DEG      180.0f
+#define FLIGHT_YAW_OUTER_LIMIT_DEG_S     120.0f
+#define FLIGHT_YAW_INNER_LIMIT           250.0f
+
+#define YAW_MAX_RATE_DEF_S              10.0f  // yaw 每秒最多变化30度
+#define YAW_INPUT_DEADBAND              0.5f       // 摇杆死区
+#define YAW_INPUT_EXPO                  0.3f    // 0-1,越小越钝
+
 /* ============================================================
  * 内部辅助：安全输出清零
  * ============================================================ */
@@ -84,6 +93,22 @@ static void FlightControl_ClearOutput(ControlOutput_t *out)
     out->roll_out = 0.0f;
     out->yaw_out = 0.0f;
 }
+
+static float apply_deadband(const float x, const float deadband)
+{
+    if(x > -deadband && x < deadband)
+    {
+        return 0.0f;
+    }
+    return x;
+}
+
+static float apply_expo(const float x, float expo)
+{
+    // 简单 expo：低速更柔和，高速保留
+    return expo * x * x * x + (1.0f - expo) * x;
+}
+
 
 /* ============================================================
  * 初始化
@@ -213,7 +238,24 @@ void FlightControl_Update(const _st_Mpu *mpu,
      * yaw 使用“角速度积分成角度目标”的方式
      * 注意：这里必须保证 dt 稳定
      */
-    s_yaw_target += cmd->yaw_rate_sp * dt;
+    // s_yaw_target += cmd->yaw_rate_sp * dt;
+    // s_yaw_target = LIMIT(s_yaw_target,
+    //                      angle->yaw - FLIGHT_YAW_TARGET_LIMIT_DEG,
+    //                      angle->yaw + FLIGHT_YAW_TARGET_LIMIT_DEG);
+    // pidYaw.desired = s_yaw_target;
+    float yaw_input = cmd->yaw_rate_sp;
+
+    /* 死区限制 */
+    yaw_input = apply_deadband(yaw_input, YAW_INPUT_DEADBAND);
+
+    /*曲线压缩，减弱中间段灵敏度 */
+    yaw_input = apply_expo(yaw_input, YAW_INPUT_EXPO);
+
+    /* 映射成实际角度 */
+    yaw_input *= YAW_MAX_RATE_DEF_S;
+
+    s_yaw_target += yaw_input * dt;
+
     pidYaw.desired = s_yaw_target;
 
     /* 角速度测量值，单位需与你的 PID 设计一致 */
@@ -235,9 +277,21 @@ void FlightControl_Update(const _st_Mpu *mpu,
     CascadePID(&pidRateY, &pidPitch, dt);
     CascadePID(&pidRateZ, &pidYaw, dt);
 
+    /*
+     * yaw 单独限幅：先限制外环输出，再进入内环，避免积分把输出放大到很大。
+     */
+    // pidUpdate(&pidYaw, dt);
+    // pidYaw.out = LIMIT(pidYaw.out,
+    //                    -FLIGHT_YAW_OUTER_LIMIT_DEG_S,
+    //                    FLIGHT_YAW_OUTER_LIMIT_DEG_S);
+    // pidRateZ.desired = pidYaw.out;
+    // pidUpdate(&pidRateZ, dt);
+
     out->roll_out = pidRateX.out;
     out->pitch_out = pidRateY.out;
-    out->yaw_out = pidRateZ.out;
+    out->yaw_out = LIMIT(pidRateZ.out,
+                         -FLIGHT_YAW_INNER_LIMIT,
+                         FLIGHT_YAW_INNER_LIMIT);
 
     s_last_state = state;
 

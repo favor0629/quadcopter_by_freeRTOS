@@ -96,6 +96,7 @@
 
 #define configUSE_COUNTING_SEMAPHORES      1
 
+#define configUSE_PREEMPTION                            1                       /* 1: 抢占式调度器, 0: 协程式调度器, 无默认需定义 */
 
 
  #define xPortPendSVHandler PendSV_Handler

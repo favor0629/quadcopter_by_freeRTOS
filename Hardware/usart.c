@@ -9,7 +9,7 @@
  * ============================================================ */
 /* 发送缓冲区大小，必须是2的幂 */
 #ifndef USART1_TX_BUF_SIZE
-#define USART1_TX_BUF_SIZE      1024U
+#define USART1_TX_BUF_SIZE      2048U
 #endif
 
 #if ((USART1_TX_BUF_SIZE & (USART1_TX_BUF_SIZE - 1U)) != 0U)

@@ -2,9 +2,9 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#ifdef DEBUG
+//#ifdef DEBUG
 #include "debug.h"
-#endif
+//#endif
 
 
 static ArmDetector_t arm_detector = {0};
@@ -168,6 +168,9 @@ void ArmDetector_Update(const RemoteData_t *remote, uint32_t dt_ms)
             break;
         }
     }
+   // LOG_I("++++++++++++++++++++++++++++++++++++++++++++++\r\n");
+    LOG_I("timer = %d\r\n", arm_detector.timer_ms);
+   // LOG_I("++++++++++++++++++++++++++++++++++++++++++++++\r\n");
 }
 
 /* ------------------------------------------------------------

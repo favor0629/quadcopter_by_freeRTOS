@@ -15,8 +15,9 @@ int main(void)
     
     
     Debug_SendRawBuffer((const uint8_t *)"TEST\r\n", 6);
-    LOG_I("now we are in main fucntion");
+    LOG_I("now we are in main fucntion\r\n");
     freeRTOS_demo();
+    
 
 
 

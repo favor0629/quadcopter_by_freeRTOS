@@ -68,15 +68,17 @@ static uint8_t s_mpu_inited = 0U;
  * ============================================================ */
 static void MPU6050_DelayMs(uint32_t ms)
 {
-    vTaskDelay(pdMS_TO_TICKS(ms));
-    // #if(INCLUDE_vTaskDelay == 1)
-    //     if(xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
-    //     {
-    //         vTaskDelay(pdMS_TO_TICKS(ms));
-    //     }
-    // #else
-    //     Delay_ms(ms);
-    // #endif
+    //vTaskDelay(pdMS_TO_TICKS(ms));
+// #if(INCLUDE_vTaskDelay == 1)
+//     if(xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+//     {
+//         vTaskDelay(pdMS_TO_TICKS(ms));
+//     }
+// #else
+//     Delay_ms(ms);
+// #endif
+    Delay_ms(ms);
+
 }
 
 
@@ -188,6 +190,11 @@ MPU6050_Status_t Mpu_Init(void)
         {
             return MPU6050_ERR_NOT_INIT;
         }
+        else
+        {
+            s_mpu_inited = 1U;
+        }
+        /* 这里暂且把s_mpu_inited 设置为1，如果下面没有正确初始化，在设置为0 */
     }
 
     ret = MPU6050_Lock(pdMS_TO_TICKS(MPU_I2C_TIMEOUT_MS));
@@ -196,7 +203,7 @@ MPU6050_Status_t Mpu_Init(void)
         return ret;
     }
 
-    s_mpu_inited = 0U;
+    //s_mpu_inited = 0U;
 
     for(retry = 0; retry < MPU_INIT_RETRY_COUNT; ++retry)
     {
@@ -229,6 +236,10 @@ MPU6050_Status_t Mpu_Init(void)
                 s_mpu_inited = 1U;
                 MPU6050_Unlock();
                 return MPU6050_OK;
+            }
+            else
+            {
+                s_mpu_inited = 0U;
             }
         }
         MPU6050_DelayMs(pdMS_TO_TICKS(10));

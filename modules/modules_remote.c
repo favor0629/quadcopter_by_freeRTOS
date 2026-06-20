@@ -10,7 +10,7 @@
 #define FAILED  1
 
 #define REMOTE_PACKET_SIZE 32U      // remote pacekt size in bytes
-#define REMOTE_LOST_LIMIT 100U      // 连续丢包超过这个数量就进入 failsafe
+#define REMOTE_LOST_LIMIT 300U      // 连续丢包超过这个数量就进入 failsafe
 #define REMOTE_QUEUE_LENGTH 1U
 
 /*使用的是“只保留最新值”的策略，队列长度固定为 1*/
@@ -123,7 +123,7 @@ void Remote_Init(void)
 static uint8_t Remote_ParseFrame(const uint8_t *buf, RemoteData_t *out)
 {
     uint8_t i;
-    uint16_t check_sum = 0;
+    uint8_t check_sum = 0U;
 
     if(buf == NULL || out == NULL)
     {
@@ -160,7 +160,7 @@ static uint8_t Remote_ParseFrame(const uint8_t *buf, RemoteData_t *out)
     out->valid = 1U;
     out->failsafe = 0U;
 
-    return 1;
+    return 1U;
 }
 
 /* ------------------------------------------------------------
@@ -185,6 +185,7 @@ void Remote_Update(void)
         if(Remote_ParseFrame(rx_datas, &new_remote) == 1U)
         {
             s_lost_count = 0U;
+            LOG_I("Received valid remote data\r\n");
         }
         else
         {
@@ -193,6 +194,7 @@ void Remote_Update(void)
             {
                 s_lost_count++;
             }
+            LOG_W("Received invalid remote data\r\n");
         }
     }
     else
@@ -202,6 +204,7 @@ void Remote_Update(void)
         {
             s_lost_count++;
         }
+        LOG_W("Failed to receive remote data\r\n");
     }
 
     if(s_lost_count > REMOTE_LOST_LIMIT)
@@ -216,6 +219,7 @@ void Remote_Update(void)
     
     /* 更新内部缓存 */
     s_remote_cache = new_remote;
+    LOG_E("lost count:%d\r\n", s_lost_count);
 
     (void)xQueueOverwrite(s_remote_queue, &s_remote_cache);
 }
@@ -235,7 +239,7 @@ void Remote_Task(void *argument)
 
     for (;;)
     {
-        LOG_I("Remote Task running now -------\r\n");
+        //LOG_I("Remote Task running now -------\r\n");
         Remote_Update();
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(5));
         //vTaskDelay(pdMS_TO_TICKS(5));
