@@ -12,6 +12,8 @@
 #include "mpu6050.h"
 #include "imu.h"
 #include "debug.h"
+#include "led.h"
+
 /**************************************************************************/
 /* freeRTOS 配置 */
 
@@ -23,6 +25,11 @@
 #define FLIGHT_TASK_STACK 512
 #define SENSOR_TASK_PRIO    4
 #define SENSOR_TASK_STACK 384
+
+/* led 任务 */
+#define LED_TASK_PRIO       3
+#define LED_TASK_STACK      128
+static TaskHandle_t LedTask_handler = NULL;
 
 static TaskHandle_t StartTask_Handler = NULL;
 static void StartTaskCreate(void *parameter);
@@ -133,6 +140,14 @@ static void StartTaskCreate(void* parameter)
     {
         LOG_E("create FlightTask successfully!\r\n");
     }
+
+    xReturn = xTaskCreate((TaskFunction_t)LED_Task,
+                         (const char*    )"LEDTask",
+                         (uint32_t       )LED_TASK_STACK,
+                         (void*          )NULL,
+                         (UBaseType_t    )LED_TASK_PRIO,
+                         (TaskHandle_t*  )&LedTask_handler);
+
     taskEXIT_CRITICAL();
 
     vTaskDelete(NULL);
@@ -142,6 +157,19 @@ static void RemoteTask(void *parameter)
 {
     LOG_I("begin remote task\r\n ");
     (void)parameter;
+
+    /* 这里对led进行测试 */
+
+    //     AlwaysOn = 1,
+    // AlwaysOff,
+    // AllFlashLight,
+    // AlternateFlash,
+    // WARNING,
+    // DANGEROURS,
+    // GET_OFFSET,
+    // BREATHING  
+    LED_status_e led_status = BREATHING;
+    LED_SetStatus(led_status);
     Remote_Task(NULL);
 }
 
