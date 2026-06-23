@@ -1,5 +1,7 @@
+#include "FreeRTOSConfig.h"
 #include "FreeRTOS.h"
 #include "task.h"
+
 
 /* Idle 任务静态内存 */
 static StaticTask_t xIdleTaskTCBBuffer;
@@ -30,3 +32,28 @@ void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer,
     *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
 }
 #endif
+
+
+#if (configCHECK_FOR_STACK_OVERFLOW > 0)
+#include "debug.h"
+/**
+ * Stack overflow detection
+ */
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    LOG_E("[ERROR] task:%s, statck overflow!\r\n", pcTaskName);
+
+    /* disable interrupt */
+    taskDISABLE_INTERRUPTS();
+
+    for(;;)
+    {
+        /* wait busy */
+    }
+}
+#endif
+
+
+
+
+

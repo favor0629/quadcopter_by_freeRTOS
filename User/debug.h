@@ -53,6 +53,13 @@ extern "C" {
 #define DEBUG_ALLOW_BOOT_PRINT      1
 #endif
 
+/**
+ * 是否开启测试栈历史最少空间
+ */
+#ifndef DEBUG_STACK_WATER_MARK
+#define DEBUG_STACK_WATER_MARK     0
+#endif
+
 /* =========================
  * 底层输出接口
  * ========================= */
@@ -66,7 +73,7 @@ void Debug_VPrintf(const char *fmt, va_list args);
 /* =========================
  * 日志宏
  * ========================= */
-#if DEBUG_ENABLE
+#if (DEBUG_ENABLE == 1)
 
     #if (DEBUG_LEVEL >= DEBUG_LEVEL_ERROR)
         #define LOG_E(...)      Debug_Printf("[E] " __VA_ARGS__)

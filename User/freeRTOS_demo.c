@@ -13,23 +13,37 @@
 #include "imu.h"
 #include "debug.h"
 #include "led.h"
+#include "led_control.h"
 
 /**************************************************************************/
 /* freeRTOS 配置 */
 
-#define START_PRIO         1
-#define START_STK_SIZE   128
-#define REMOTE_TASK_PRIO    3
-#define REMOTE_TASK_STACK 256
-#define FLIGHT_TASK_PRIO    3
-#define FLIGHT_TASK_STACK 512
-#define SENSOR_TASK_PRIO    4
-#define SENSOR_TASK_STACK 384
+/* 优先级原则：频率越高优先级越高，防止任务饿死
+ * 数值越大优先级越高
+ */
+#define START_PRIO          3
+#define START_STK_SIZE      128
 
-/* led 任务 */
+#define SENSOR_TASK_PRIO    5//4
+#define SENSOR_TASK_STACK   256
+#define SENSOR_TASK_PERIOD  30U
+
+#define FLIGHT_TASK_PRIO    6
+#define FLIGHT_TASK_STACK   300
+#define FLIGHT_TASK_PERIOD  15U
+
+#define REMOTE_TASK_PRIO    4
+#define REMOTE_TASK_STACK   256
+
 #define LED_TASK_PRIO       3
 #define LED_TASK_STACK      128
 static TaskHandle_t LedTask_handler = NULL;
+
+
+/* led control task */
+// #define LED_CONTROL_TASK_PRIO   3
+// #define LED_CONTROL_TASK_STACK  128
+// static TaskHandle_t LedControlTask_handler = NULL;
 
 static TaskHandle_t StartTask_Handler = NULL;
 static void StartTaskCreate(void *parameter);
@@ -147,6 +161,31 @@ static void StartTaskCreate(void* parameter)
                          (void*          )NULL,
                          (UBaseType_t    )LED_TASK_PRIO,
                          (TaskHandle_t*  )&LedTask_handler);
+    
+    if(xReturn != pdPASS)
+    {
+        LOG_E("create LEDTask failed\r\n");
+    }
+    else
+    {
+        LOG_E("create LEDTask successfully!\r\n");
+    }
+
+    // xReturn = xTaskCreate((TaskFunction_t)LED_ControlTask,
+    //                       (const char *)"LEDControlTask",
+    //                       (uint16_t)LED_CONTROL_TASK_STACK,
+    //                       (void *)NULL,
+    //                       (UBaseType_t)LED_CONTROL_TASK_PRIO,
+    //                       (TaskHandle_t *)&LedControlTask_handler);
+
+    // if(xReturn != pdPASS)
+    // {
+    //     LOG_E("create LEDControlTask failed\r\n");
+    // }
+    // else
+    // {
+    //     LOG_E("create LEDControlTask successfully!\r\n");
+    // }
 
     taskEXIT_CRITICAL();
 
@@ -160,7 +199,7 @@ static void RemoteTask(void *parameter)
 
     /* 这里对led进行测试 */
 
-    //     AlwaysOn = 1,
+    // AlwaysOn = 1,
     // AlwaysOff,
     // AllFlashLight,
     // AlternateFlash,
@@ -168,27 +207,33 @@ static void RemoteTask(void *parameter)
     // DANGEROURS,
     // GET_OFFSET,
     // BREATHING  
-    LED_status_e led_status = BREATHING;
-    LED_SetStatus(led_status);
+    // LED_status_e led_status = BREATHING;
+    // LED_SetStatus(led_status);
     Remote_Task(NULL);
 }
 
 static void SensorTask(void *parameter)
 {
-    const TickType_t sensor_period = pdMS_TO_TICKS(3);
-    const float angle_dt = 0.006f;
+    const TickType_t sensor_period = pdMS_TO_TICKS(SENSOR_TASK_PERIOD);
+    const float angle_dt = (float)SENSOR_TASK_PERIOD * 2 / 1000.0f;//0.06f;
     TickType_t last_wake = xTaskGetTickCount();
     uint8_t angle_divider = 0U;
     uint8_t first_angle_update = 1U;
     _st_Mpu mpu = {0};
     _st_AngE angle = {0};
 
+    /* 测试所用的时间 */
+    //TickType_t start_time, end_time;
+
     LOG_I("begin sensor task\r\n ");
     (void)parameter;
 
     for (;;)
     {
+       
         vTaskDelayUntil(&last_wake, sensor_period);
+        //start_time = xTaskGetTickCount();
+        LOG_D("[sensor] get mpu6050 datas\r\n");
 
         (void)MpuGetData();
         (void)get_MPU6050_datas(&mpu);
@@ -205,16 +250,22 @@ static void SensorTask(void *parameter)
         {
             angle_divider++;
         }
+
+        //end_time = xTaskGetTickCount() - start_time;
+        #if (DEBUG_STACK_WATER_MARK == 1)
+        UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+        LOG_I("[sensor]stack water mark:%u\r\n", hw);
+        #endif
     }
 }
 
 static void FlightTask(void *parameter)
 {
     LOG_I("begin flight task\r\n ");
-    const TickType_t desired_period = pdMS_TO_TICKS(10);
+    const TickType_t desired_period = pdMS_TO_TICKS(FLIGHT_TASK_PERIOD);
     const TickType_t control_period = (desired_period == 0U) ? 1U : desired_period;
     TickType_t last_wake = xTaskGetTickCount();
-    const float dt = 0.010f;
+    const float dt = (float)FLIGHT_TASK_PERIOD / 1000.0f;//0.015f;
 
     uint8_t count = 0;
     _st_Mpu mpu;
@@ -225,12 +276,16 @@ static void FlightTask(void *parameter)
     ControlOutput_t ctrl = {0};
     MotorOutput_t motor = {0};
 
+
+    //TickType_t start_time, end_time;
+
     (void)parameter;
 
     for (;;)
     {
         vTaskDelayUntil(&last_wake, control_period);
 
+         //start_time = xTaskGetTickCount();
         if (get_MPU6050_datas(&mpu) != MPU6050_OK)
         {
             mpu = (_st_Mpu){0};
@@ -271,27 +326,28 @@ static void FlightTask(void *parameter)
         Safety_Update(&remote, &mpu, &angle, &safety);
         FlightState_Update(&cmd, &safety);
 
-        count++;
-        if(count >= 5)
-        {
-            count = 0;
-            LOG_I("safety: remote lost:%d\r\n", safety.remote_lost);
-        }
+        // count++;
+        // if(count >= 2)
+        // {
+        //     count = 0;
+        // }
+         //LOG_I("[flight]safety: remote lost:%d, flight status:%d\r\n", safety.remote_lost, FlightState_Get());
         // LOG_I("================================================================\r\n");
         // LOG_I("safety status: remote_lost=%u, mpu_lost=%u, angle_too_large=%u, emergency=%u\r\n",
         //      safety.remote_lost, safety.mpu_lost, safety.angle_too_large, safety.emergency);
-        // LOG_I("remote: th=%u, arm=%u, disarm=%u | angle: roll=%.2f, pitch=%.2f, yaw=%.2f | safety: remote_lost=%u, mpu_lost=%u, angle_too_large=%u, emergency=%u | state=%d\r\n",
-        //       remote.throttle, cmd.arm_request, cmd.disarm_request,
-        //       angle.roll, angle.pitch, angle.yaw,
-        //       safety.remote_lost, safety.mpu_lost, safety.angle_too_large, safety.emergency,
-        //       FlightState_Get());
+        LOG_I("[fligt]remote: th=%u\r\n", remote.throttle);
 
         FlightControl_Update(&mpu, &angle, &cmd, FlightState_Get(), dt, &ctrl);
         Mixer_QuadX(cmd.throttle, &ctrl, FlightState_Get(), &motor);
-        LOG_I("thr:%d, control output: roll=%.2f, pitch=%.2f, yaw=%.2f | motor: m1=%d, m2=%d, m3=%d, m4=%d\r\n",
-              remote.throttle ,ctrl.roll_out, ctrl.pitch_out, ctrl.yaw_out,
-              motor.m1, motor.m2, motor.m3, motor.m4);
+        // LOG_I("thr:%d, control output: roll=%.2f, pitch=%.2f, yaw=%.2f | motor: m1=%d, m2=%d, m3=%d, m4=%d\r\n",
+        //       remote.throttle ,ctrl.roll_out, ctrl.pitch_out, ctrl.yaw_out,
+        //       motor.m1, motor.m2, motor.m3, motor.m4);
+        //end_time = xTaskGetTickCount() - start_time;
+       // motor_write_all(&motor); // 测试，暂时取消掉
 
-        //motor_write_all(&motor); // 测试，暂时取消掉
+       #if (DEBUG_STACK_WATER_MARK == 1)
+       UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+       LOG_I("[flight]stack water mark:%u\r\n", hw);
+       #endif 
     }
 }

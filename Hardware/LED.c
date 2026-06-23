@@ -58,7 +58,7 @@ volatile LED_s s_led = {.FlashTime = 200U, .status = AllFlashLight};
 
 
 /* 任务周期：LED 不需要 1ms 刷新，10ms 更适合低负载运行 */
-#define LED_TASK_PERIOD_MS			1U
+#define LED_TASK_PERIOD_MS			5U
 
 /* ===================== 静态变量 ===================== */
 static TaskHandle_t s_led_task_handle = NULL;
@@ -367,7 +367,46 @@ static void LED_Service1ms(void)
 	}
 }
 
+static void flightStatusToLedStatus(const FlightState_t flight_status, LED_status_e *led_status)
+{
+	switch (flight_status)
+	{
+		case FLIGHT_LOCKED:
+		{
+			//LED_SetStatus()
+			*led_status = AlwaysOn;
+			break;
+		}
 
+		case FLIGHT_ARMED_IDLE:
+		{
+			*led_status = AlwaysOff;
+			break;
+		}
+		
+		case FLIGHT_FLYING:
+		{
+			*led_status = AlwaysOff;
+			break;
+		}
+
+		case FLIGHT_FAILSAFE:
+		{
+			*led_status = AllFlashLight;
+			break;
+		}
+
+		case FLIGHT_ERROR:
+		{
+			*led_status = DANGEROURS;
+			break;
+		}
+
+		default:
+			*led_status = AlwaysOn;
+			break;
+	}
+}
 
 /*==================FreeRTOS LED task==================*/
 void LED_Task(void *pvParameters)
@@ -379,13 +418,27 @@ void LED_Task(void *pvParameters)
 	}
 
 	TickType_t xLastWakeTime;
+	
 	(void)pvParameters;
+	FlightState_t flight_status;
+	LED_status_e led_status;
 	xLastWakeTime = xTaskGetTickCount();
+
+	//TickType_t start_time, end_time;
 
 	for(;;)
 	{
+		//start_time = xTaskGetTickCount();
+		flight_status = FlightState_Get();
+		flightStatusToLedStatus(flight_status, &led_status);
+        
+        LED_SetStatus(led_status);
+		LOG_I("[led] led status:%d, flight_status:%d\r\n", led_status, flight_status);
 		LED_Service1ms();
+		//end_time = xTaskGetTickCount() - start_time;
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(LED_TASK_PERIOD_MS));
+		UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+        LOG_I("[led]stack water mark:%u\r\n", hw);
 	}
 }
 

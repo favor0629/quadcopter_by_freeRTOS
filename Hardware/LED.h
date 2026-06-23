@@ -5,6 +5,8 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "modules_flight_status.h"
+#include "debug.h"
 
 /* ===================== LED 状态定义 ===================== */
 typedef enum

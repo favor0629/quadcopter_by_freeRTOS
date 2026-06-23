@@ -10,8 +10,12 @@
 #define FAILED  1
 
 #define REMOTE_PACKET_SIZE 32U      // remote pacekt size in bytes
-#define REMOTE_LOST_LIMIT 300U      // 连续丢包超过这个数量就进入 failsafe
+#define REMOTE_LOST_TIMEOUT_MS 150U  // 超过这个时间没有有效帧就进入 failsafe
 #define REMOTE_QUEUE_LENGTH 1U
+
+#define REMOTE_FAULT_TOLERANT_TIME      50U     /* 允许出现短暂失联的时间，防止remote数据出现偶尔跳变 */
+
+#define REMOTE_TASK_PERIOD      10U
 
 /*使用的是“只保留最新值”的策略，队列长度固定为 1*/
 static StaticQueue_t s_remote_queue_buffer;
@@ -22,10 +26,13 @@ static QueueHandle_t s_remote_queue = NULL;
 /* 内部缓存：保留最新一帧 */
 static RemoteData_t s_remote_cache;
 
+/* 保留失联之前，最新的一帧有效数据，防止偶尔失联造成数据突变 */
+static RemoteData_t s_remote_last_valid_cache;
+
 static uint8_t rx_datas[REMOTE_PACKET_SIZE];
 
-/* 丢包次数统计 */
-static uint16_t s_lost_count = 0U;
+/* 最近一次收到有效遥控帧的时间 */
+static TickType_t s_last_valid_tick = 0U;
 
 /* 模块是否初始化 */
 static volatile uint8_t s_initialized = 0U;
@@ -87,7 +94,8 @@ void Remote_Init(void)
     memset(rx_datas, 0, sizeof(rx_datas));
 
     Remote_SetSafeState(&s_remote_cache);
-    s_lost_count = REMOTE_LOST_LIMIT + 1U;
+    Remote_SetSafeState(&s_remote_last_valid_cache);
+    s_last_valid_tick = xTaskGetTickCount() - pdMS_TO_TICKS(REMOTE_LOST_TIMEOUT_MS + 1U);
 
     /* 创建最新遥控帧队列，长度为1 */
     if(s_remote_queue == NULL)
@@ -169,6 +177,7 @@ static uint8_t Remote_ParseFrame(const uint8_t *buf, RemoteData_t *out)
 void Remote_Update(void)
 {
     RemoteData_t new_remote;
+    TickType_t now_tick;
 
     /* 默认先进入安全状态，只有解析成功之后才覆盖 */
     Remote_SetSafeState(&new_remote);
@@ -184,30 +193,28 @@ void Remote_Update(void)
     {
         if(Remote_ParseFrame(rx_datas, &new_remote) == 1U)
         {
-            s_lost_count = 0U;
-            LOG_I("Received valid remote data\r\n");
+            /* 正确获取一帧数据，更新到s_remote_last_valid_cache */
+            s_remote_last_valid_cache = new_remote;
+            s_last_valid_tick = xTaskGetTickCount();
+            LOG_I("[remote]Received valid remote data\r\n");
         }
         else
         {
-            /* 收到包但解析失败 */
-            if(s_lost_count < 0xFFFFU)
-            {
-                s_lost_count++;
-            }
-            LOG_W("Received invalid remote data\r\n");
+            new_remote = s_remote_last_valid_cache;
+            LOG_W("[remote]Received invalid remote data\r\n");
         }
     }
     else
     {
-        /* 超时或接受失败 */
-        if(s_lost_count < 0xFFFFU)
-        {
-            s_lost_count++;
-        }
-        LOG_W("Failed to receive remote data\r\n");
+        /* 超时或接收失败 */
+        new_remote = s_remote_last_valid_cache;
+        LOG_W("[remote]Failed to receive remote data\r\n");
     }
 
-    if(s_lost_count > REMOTE_LOST_LIMIT)
+    now_tick = xTaskGetTickCount();
+    TickType_t during = now_tick - s_last_valid_tick;
+    //if(during > pdMS_TO_TICKS(REMOTE_FAULT_TOLERANT_TIME))
+    if( during > pdMS_TO_TICKS(REMOTE_LOST_TIMEOUT_MS))
     {
         new_remote.valid = 0U;
         new_remote.failsafe = 1U;
@@ -219,7 +226,9 @@ void Remote_Update(void)
     
     /* 更新内部缓存 */
     s_remote_cache = new_remote;
-    LOG_E("lost count:%d\r\n", s_lost_count);
+    // LOG_E("[remote]failsafe=%u, elapsed=%u ms\r\n",
+    //       s_remote_cache.failsafe,
+    //       (uint32_t)((now_tick - s_last_valid_tick) * portTICK_PERIOD_MS));
 
     (void)xQueueOverwrite(s_remote_queue, &s_remote_cache);
 }
@@ -237,12 +246,21 @@ void Remote_Task(void *argument)
     }
     TickType_t last_wake = xTaskGetTickCount();
 
+   // TickType_t start_time, end_time;
+
     for (;;)
     {
+        //start_time = xTaskGetTickCount();
         //LOG_I("Remote Task running now -------\r\n");
         Remote_Update();
-        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(5));
-        //vTaskDelay(pdMS_TO_TICKS(5));
+        //end_time = xTaskGetTickCount() - start_time;
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(REMOTE_TASK_PERIOD));
+
+
+        #if (DEBUG_STACK_WATER_MARK == 1)
+        UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+        LOG_I("[remote]stack water mark:%u\r\n", hw);
+        #endif 
 
         /*
          * 如果你使用的 NRF24L01_WaitRxPacket 已经阻塞等待 IRQ，
@@ -282,107 +300,3 @@ uint8_t Remote_IsFailsafe(void)
 }
 
 
-
-
-
-
-
-
-
-// /**
-//  * @brief 初始化遥控模块
-//  * @note` 1. 清零 remote 数据结构，确保所有字段有定义的初始值
-//  *       2. 设置 remote 的默认值，确保在没有接收到数据时有合理的默认状态
-//  */
-// void Remote_Init(void)
-// {
-//     memset(&remote, 0, sizeof(remote));     // 初始化 remote 数据结构，确保所有字段有定义的初始值
-//     memset(rx_datas, 0, sizeof(rx_datas));
-
-
-//     /* 初始化遥控器数据 */
-//     remote.roll = 1500;
-//     remote.pitch = 1500;
-//     remote.throttle = 1000;
-//     remote.yaw = 1500;
-//     remote.aux1 = 1000;
-//     remote.aux2 = 1000;
-//     remote.aux3 = 1000;
-//     remote.aux4 = 1000;
-//     remote.valid = 0;
-//     remote.failsafe = 1;        // 无效且失联的数据
-// }
-
-// /**
-//  * @brief 更新遥控数据
-//  * @note 1. 调用 NRF24L01_RxPacket 接收数据包
-//  *       2. 验证数据包的有效性（起始字节、校验和等）
-//  *       3. 如果数据包有效，解析遥控通道数据并更新 remote 结构体
-//  *       4. 如果数据包无效，增加丢包计数器，并根据丢包数量更新 failsafe 状态
-//  */
-// void Remote_Update(void)
-// {
-//     static uint16_t lost_count = REMOTE_LOST_LIMIT + 1U;
-//     uint8_t i;
-//     uint8_t checksum = 0;
-
-//     if(NRF24L01_RxPacket(rx_datas) == NRF24L01_OK)
-//     {
-//         for(i = 0; i < REMOTE_PACKET_SIZE - 1; ++i)
-//         {
-//             checksum += rx_datas[i];
-//         }
-
-//         if(rx_datas[REMOTE_PACKET_SIZE - 1] == checksum && rx_datas[0] == 0xAA && rx_datas[1] == 0xAF)
-//         {
-//             remote.roll = (uint16_t)(((uint16_t)rx_datas[4] << 8) | rx_datas[5]);
-//             remote.pitch = (uint16_t)(((uint16_t)rx_datas[6] << 8) | rx_datas[7]);
-//             remote.throttle = (uint16_t)(((uint16_t)rx_datas[8] << 8) | rx_datas[9]);
-//             remote.yaw = (uint16_t)(((uint16_t)rx_datas[10] << 8) | rx_datas[11]);
-//             remote.aux1 = (uint16_t)(((uint16_t)rx_datas[12] << 8) | rx_datas[13]);
-//             remote.aux2 = (uint16_t)(((uint16_t)rx_datas[14] << 8) | rx_datas[15]);
-//             remote.aux3 = (uint16_t)(((uint16_t)rx_datas[16] << 8) | rx_datas[17]);
-//             remote.aux4 = (uint16_t)(((uint16_t)rx_datas[18] << 8) | rx_datas[19]);
-
-//             lost_count = 0;
-//             remote.valid = 1;
-//             remote.failsafe = 0;
-//             return;
-//         }
-//     }
-
-//     /*进入下面代码，则为失败*/
-//     if(lost_count < 0xFFFFU)
-//     {
-//         lost_count++;
-//     }
-
-//     remote.valid = 0;
-//     if(lost_count > REMOTE_LOST_LIMIT)
-//     {
-//         remote.failsafe = 1;
-//     }
-// }
-
-// /**
-//  * @brief 获取遥控数据
-//  * @param out 输出参数，指向 RemoteData_t 结构体
-//  */
-// void Remote_GetData(RemoteData_t *out)
-// {
-//     if(out == 0)
-//     {
-//         return;
-//     }
-
-//     *out = remote;
-// }
-
-// /**
-//  * @brief 检查遥控是否进入失联状态
-//  * @return 1 如果进入失联状态，0 否则
-//  */
-// uint8_t Remote_IsFailsafe(void)
-// {
-//     return remote.failsafe;
-// }
