@@ -3,9 +3,12 @@
 
 A quadcopter flight controller based on **STM32F103** and **FreeRTOS**.
 
-This project implements the core components of a real-time flight control system, including remote-control communication, sensor acquisition, attitude estimation, flight state management, flight control, motor mixing, and safety protection.
+This project implements the core components of a real-time flight control system, including remote-control 
+communication, sensor acquisition, attitude estimation, flight state management, flight control, motor mixing, and
+safety protection.
 
-The project is intended as a learning-oriented implementation of an embedded real-time flight controller and demonstrates how a complete flight control system can be organized using FreeRTOS.
+The project is intended as a learning-oriented implementation of an embedded real-time flight controller and
+demonstrates how a complete flight control system can be organized using FreeRTOS.
 [link to the remote control code](https://github.com/favor0629/quadcopter_remote)
 ---
 
